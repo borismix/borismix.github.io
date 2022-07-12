@@ -1,1 +1,161 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+ 	"http://www.w3.org/TR/REC-html40/loose.dtd">
+<html><head>
+<meta http-equiv='Content-Type' content='text/html; charset=iso-8859-1'>
+<title>A Simple Compiler - Part 1: Lexical analysis.</title>
+<!-- converted from text by grutatxt 2.0.13:1 on Tue Apr 15 13:22:23 2008 -->
+</head><body>
+<a name='a_simple_compiler_-_part_1:_lexical_analysis.'></a>
+<h1 class='level1'>A Simple Compiler - Part 1: Lexical analysis.</h1>
+<p>
+The goal of this series of articles is to develop a simple
+compiler. Along the way, I'll show how easy it is to do so.
+<p>
+There are four major parts to a compiler:  Lexical analysis,
+Parsing, Semantic analysis, and Code generation.
+<p>
+Briefly, Lexical analysis breaks the source code into its lexical
+units.  Parsing combines those units into sentences, using the
+grammar (see below) to make sure the are allowable.  Semantic
+analysis makes sure the sentences make sense, especially in areas
+that are not so easily specified via the grammar.  Type checking
+is a good example. Code generation takes the output of the Parser
+(many times in the format of an Abstract Syntax Tree) and
+converts it to (virtual) machine code, assembly code, or perhaps
+even code in another programming language - C is a popular
+target.
+<p>
+<a name='lexical_analysis:'></a>
+<h2 class='level2'>Lexical analysis:</h2>
+Also called scanning, this part of a compiler breaks the source
+code into meaningful symbols that the parser can work with.
+Typically, the scanner returns an enumerated type (or constant,
+depending on the language) representing the symbol just scanned.
+Scanning is the easiest and most well-defined aspect of
+compiling.
+<p>
+Additional responsibilities of the scanner include removing
+comments, identifying keywords, and converting numbers to
+internal form.
+<p>
+For an example, given the following assignment statement from a
+BASIC-like language:
+<p>
+<pre>
+ average = total / num_items
+</pre>
+<p>
+A scanner might return, in the order given:
+<p>
+<pre>
+ Symbol:         Source text:
+ -------         -----------
+</pre>
+<p>
+<pre>
+ identifier      average
+ assign          =
+ total           total
+ divide          /
+ identifier      num_items
+</pre>
+<p>
+For a function call, from a C-family language:
+<p>
+<pre>
+ puts("Hello, World");
+</pre>
+<p>
+A scanner might return, in the order given:
+<p>
+<pre>
+ Symbol:         Source text:
+ -------         -----------
+</pre>
+<p>
+<pre>
+ identifier      puts
+ left_paren      (
+ string_literal  "Hello, World"
+ right_paren     )
+ semicolon       ;
+</pre>
+<p>
+When designing a new language, it is a good idea to think about
+the symbols that make up the language, and define them in such a
+way that they can be specified in a non-ambiguous fashion.
+<p>
+A simple example:
+<p>
+Suppose we have a simple language that allows you to display the
+output of constant integer expressions, featuring the addition
+and multiplication operators.  An example statement in the
+language:
+<p>
+<pre>
+ write(2001 + 42 * 457)
+</pre>
+<p>
+From this, we might say that the language is composed of
+Identifiers, integer constants, '(', ')', '+', '*'.
+<p>
+We could specify this more formally using regular expressions:
+<p>
+<pre>
+ identifiers:        [a-zA-Z][a-zA-Z0-9]*
+ integer constants:  [0-9]+
+ left parenthesis    (
+ right parenthesis   )
+ plus                +
+ times               *
+</pre>
+<p>
+Note that we are assuming the language is free-form and not line
+based.
+<p>
+Tools exist that will take a specification not too far removed
+from this and automatically create a scanner.  Lex and Flex are
+both popular scanner generators.  Also, many parser generators
+include built-in scanner generators.  Examples are Coco/R and
+Antlr.
+<p>
+It turns out that scanners, especially for non-ambiguously
+defined languages, are fairly easy to write.
+<p>
+Many compiler texts recommend constructing a scanner via a finite
+state machine.  But for our purposes, a simple ad-hoc scanner is
+sufficient.
+<p>
+The main routine of a scanner, which returns an enumerated
+constant of the next symbol read is:
+<p>
+<pre>
+ <code class='funcname'>getsym()</code>
+     -- skip white space
+     while the char is a space or eol
+         keep reading characters
+     switch on the char
+         when '+' read next char; return plus
+         when '*' read next char; return times
+         ...
+         when 'a'..'z', 'A'..'Z':
+             while the char is alphanumeric
+                 accumulate characters in id
+             return ident or keyword symbol, as appropriate
+         when '0'..'9'
+             while the char is a digit
+                 accumulate the integer value in val
+             return number
+         otherwise
+             read next char;
+             return null
+ end getsym
+</pre>
+<p>
+
+  <hr>
+Copyright © 2022 SemWare Corporation. All rights reserved worldwide.
+  
+  </pre>
+</body></html>
 
