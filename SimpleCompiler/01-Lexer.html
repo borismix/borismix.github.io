@@ -7,27 +7,8 @@
 </head><body>
 <a name='a_simple_compiler_-_part_1:_lexical_analysis.'></a>
 <h1 class='level1'>A Simple Compiler - Part 1: Lexical analysis.</h1>
-<p>
-The goal of this series of articles is to develop a simple
-compiler. Along the way, I'll show how easy it is to do so.
-<p>
-There are four major parts to a compiler:  Lexical analysis,
-Parsing, Semantic analysis, and Code generation.
-<p>
-Briefly, Lexical analysis breaks the source code into its lexical
-units.  Parsing combines those units into sentences, using the
-grammar (see below) to make sure the are allowable.  Semantic
-analysis makes sure the sentences make sense, especially in areas
-that are not so easily specified via the grammar.  Type checking
-is a good example. Code generation takes the output of the Parser
-(many times in the format of an Abstract Syntax Tree) and
-converts it to (virtual) machine code, assembly code, or perhaps
-even code in another programming language - C is a popular
-target.
-<p>
-<a name='lexical_analysis:'></a>
-<h2 class='level2'>Lexical analysis:</h2>
-Also called scanning, this part of a compiler breaks the source
+
+Lexical analysis, also called scanning, this part of a compiler breaks the source
 code into meaningful symbols that the parser can work with.
 Typically, the scanner returns an enumerated type (or constant,
 depending on the language) representing the symbol just scanned.
@@ -39,7 +20,7 @@ comments, identifying keywords, and converting numbers to
 internal form.
 <p>
 For an example, given the following assignment statement from a
-BASIC-like language:
+Basic-like language:
 <p>
 <pre>
  average = total / num_items
@@ -152,6 +133,7 @@ constant of the next symbol read is:
  end getsym
 </pre>
  
+ <hr>
  <p>
  <a href="Compiler.html"> Table of Contents </a>
  <p>
