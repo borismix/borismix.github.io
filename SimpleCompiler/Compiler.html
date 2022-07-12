@@ -35,8 +35,25 @@ A:hover   { background-color: #f9f9f9; }
   
 <hr>
 
-<br>
-  
+<p>
+The goal of this series of articles is to develop a simple
+compiler. Along the way, I'll show how easy it is to do so.
+<p>
+There are four major parts to a compiler:  Lexical analysis,
+Parsing, Semantic analysis, and Code generation.
+<p>
+Briefly, Lexical analysis breaks the source code into its lexical
+units.  Parsing combines those units into sentences, using the
+grammar (see below) to make sure the are allowable.  Semantic
+analysis makes sure the sentences make sense, especially in areas
+that are not so easily specified via the grammar.  Type checking
+is a good example. Code generation takes the output of the Parser
+(many times in the format of an Abstract Syntax Tree) and
+converts it to (virtual) machine code, assembly code, or perhaps
+even code in another programming language - C is a popular
+target.
+<p>
+
 <ul>
 <li><a href="01-Lexer.html">      Part 1: Lexical Analysis</a>
   <p>
