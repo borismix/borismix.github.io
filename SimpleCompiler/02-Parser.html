@@ -1,1 +1,278 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+ 	"http://www.w3.org/TR/REC-html40/loose.dtd">
+<html><head>
+<meta http-equiv='Content-Type' content='text/html; charset=iso-8859-1'>
+<title>A Simple Compiler - Part 2: Syntax analysis.</title>
+<!-- converted from text by grutatxt 2.0.13:1 on Wed Dec  5 11:03:35 2012 -->
+</head><body>
+<a name='a_simple_compiler_-_part_2:_syntax_analysis.'></a>
+<h1 class='level1'>A Simple Compiler - Part 2: Syntax analysis.</h1>
+<p>
+Like Lexical analysis, Syntax analysis (or so-called parsing) is
+a highly analyzed and well understood part of compiling.
+Basically, parsing takes the symbols returned by the scanner and
+makes sure that they form sentences (or productions) that are
+legal, according to the languages grammar.
+<p>
+There are many different parsing algorithms,  some more flexible
+than others. Some are more suited to automated parser generators
+than others.  Well known parser generators include YACC, BISON
+(the GNU version of YACC), Antlr, and Coco/R. We will cover one
+algorithm - called recursive descent - which is well suited to a
+hand-crafted compiler.  But before we get there, we'll need to
+talk about grammars.
+<p>
+A grammar is a formal way of specifying the syntax of a language.
+Developing a well defined non-ambiguous grammar is one of the
+most important steps you can take to make writing your compiler
+successful. The particular grammar format we'll use is called
+EBNF, for Extended Backus Naur Form.
+<p>
+An EBNF grammar consists of:
+<p>
+<ul><li>Terminals - which consist of symbols in the language such as keywords and operators.
+</ul>
+<p>
+<ul><li>Non-terminals - these are syntactic classes that can be substituted, and eventually lead to terminals.
+</ul>
+<p>
+<ul><li>Meta symbols - such as '=', '|', '()', '{}', '[]' and '.'.
+</ul>
+<p>
+<ul><li>Productions - this is simply a rule in the grammar.
+</ul>
+<p>
+<ul><li>The start symbol - this is where the grammar starts.
+</ul>
+<p>
+<ul><li>By convention, terminals are specified in quotes, and non-terminals are not.
+</ul>
+<p>
+A production in a grammar takes the following form:
+<p>
+non-terminal = terminal non-terminal ....
+<p>
+For example:
+<p>
+<pre>
+ sentence = subject predicate "." .
+ subject = "Peter" | "Paul" .
+ predicate = "writes compilers" | "crashes compilers" .
+</pre>
+<p>
+This grammar has 3 productions. Sentence is the start symbol,
+subject and predicate are non-terminals, and "Peter", "Paul",
+"writes compilers", "crashes compilers" are terminals.
+Additionally, '|' is used for alteration.  Note how all
+non-terminals have to eventually be defined by terminals.
+<p>
+Valid sentences in this language are:
+<p>
+<pre>
+ Peter writes compilers.
+ Peter crashes compilers.
+ Paul writes compilers.
+ Paul crashes compilers.
+</pre>
+<p>
+To specify a function call in a C-like language, we could write:
+<p>
+<pre>
+ function_call = ident '(' [parm_list] ')' .
+ parm_list = ident {',' ident} .
+</pre>
+<p>
+The grammar above has two productions: function_call and
+parm_list.  ident, '(', ',', and ')' are terminals, and parm_list
+is a non-terminal.  [] and {} are meta-symbols, meaning
+zero-or-one and zero-or-more of what they enclose, respectively.
+Other meta-symbols are '|' for 'or', and '(' and ')' for
+grouping. As you can see from the above simple grammar,
+non-terminals in the production to the right of the '=' have to
+also be listed to the left of the '='.
+<p>
+Note that by convention, ident and number are treated as
+terminals, and are usually specified by something similar to:
+<p>
+<pre>
+ ident = letter { letter | digit }
+ number = digit { digit }
+</pre>
+<p>
+Another common terminal is String, which can be defined as:
+<p>
+<pre>
+ string = "'" {no_single_quote} "'" .
+ no_single_quote = AnyChar - "'" .
+ AnyChar = Chr(32) .. Chr(255) .
+</pre>
+<p>
+function_call can be read as requiring an identifier, an opening
+'(', an optional parameter list, and a closing )'. parm_list can
+be read as an identifier, optionally followed by zero or more ','
+followed by another identifier.
+<p>
+According to the above grammar, the following are valid function
+calls:
+<p>
+<pre>
+ <code class='funcname'>factor()</code>
+ term(a)
+ expr(tx, prec, tptr)
+</pre>
+<p>
+The following are invalid function calls:
+<p>
+<pre>
+ <code class='funcname'>1fun()</code>  --an identifier must start with an alphabetic character
+ fun     --a function call must have '(' and ')'
+ myfun(a b c)    --parameters must be separated by ','
+</pre>
+<p>
+Another simple example.  We'd like to write a teeny compiler for
+a subset of Pascal.  Our subset will only support one statement -
+writeln.  Here is a grammar for teeny Pascal:
+<p>
+<pre>
+  Program = 'program' ident ';' 'begin' Stmtseq 'end' '.' .
+  Stmtseq = [Stmt {';' Stmt }] .
+  Stmt    = 'writeln' '(' String ')' .
+</pre>
+<p>
+This grammar has 3 productions.  Program is the start symbol.
+Pascal, Stmtseq and Stmt are non-terminals. Note how each of the
+non-terminal symbols is substituted for until it leads to a
+terminal.
+<p>
+<pre>
+  A teeny Pascal example program:
+</pre>
+<p>
+<pre>
+  program one;
+  begin
+    writeln('hello, world!');
+    writeln('goodbye.');
+  end.
+</pre>
+<p>
+<pre>
+  A erroneous teeny Pascal program:
+</pre>
+<p>
+<pre>
+  program;    -- ident missing after program
+  begin
+    write     -- unknown identifier
+    <code class='funcname'>writeln()</code> -- writeln requires a string
+  end;        -- terminating 'end' requires a '.'
+</pre>
+<p>
+Can you see how the grammar above can be used to see if a program
+is syntactically correct?
+<p>
+So how would you write a parser for the teeny Pascal grammar?
+<p>
+It turns out that the parsing closely follows the grammar.  We
+assume the existence of a routine <code class='funcname'>getsym()</code> that fetches the next
+symbol from the source, and stores it in the global variable sym.
+We also assume the existence of a routine <code class='funcname'>expect()</code>, which
+verifies that the passed symbol is equal to the current symbol,
+and if so, retrieves the next symbol by calling <code class='funcname'>getsym()</code>.
+Further, we assume that <code class='funcname'>getsym()</code> has already been called at least
+once.
+<p>
+To parse the Pascal production:
+<p>
+<pre>
+ Program = 'program' ident ';' 'begin' Stmtseq 'end' '.' .
+</pre>
+<p>
+<pre>
+ <code class='funcname'>program()</code>
+   expect(programsym)
+   expect(idsym)
+   expect(semi)
+   expect(beginsym)
+   <code class='funcname'>stmtseq()</code>
+   expect(endsym)
+   expect(period)
+ end
+</pre>
+<p>
+Apparently, for terminals, we simply make sure they are there,
+and in the proper order.
+<p>
+For non-terminals we call a function that handles the work.
+<p>
+To parse Stmtseq:
+<p>
+<pre>
+  Stmtseq = Stmt {';' Stmt } .
+</pre>
+<p>
+<pre>
+ <code class='funcname'>stmtseq()</code>
+   <code class='funcname'>stmt()</code>;
+   while sym == semi
+     <code class='funcname'>getsym()</code>    -- consume ';'
+     <code class='funcname'>stmt()</code>
+   end
+ end
+</pre>
+<p>
+Remember, {} specifies symbols that appear zero or more times.
+<p>
+The above could also be written as:
+<p>
+<pre>
+ <code class='funcname'>stmtseq()</code>
+   loop
+     <code class='funcname'>stmt()</code>
+     if sym &lt;&gt; semi break
+     <code class='funcname'>getsym()</code>
+   end
+ end
+</pre>
+<p>
+Finally, to parse Stmt:
+<p>
+<pre>
+  Stmt = ['writeln' '(' String ')'] .
+</pre>
+<p>
+<pre>
+ <code class='funcname'>stmt()</code>
+   if sym == writelnsym
+     <code class='funcname'>getsym()</code>
+     expect(lparen)
+     expect(stringsym)
+     expect(rparen)
+   endif
+ end
+</pre>
+<p>
+Of course I am grossly oversimplifying here, but I hope you get
+the general idea.  I also hope you see how important it is to
+have a grammar, and how easy it can be to develop a parser from
+that grammar.
+<p>
+A simple example implementation of the above grammar follows.
+The example can run the above teeny Pascal program.
+<p>
+
+ <hr>
+ <p>
+ <a href="Compiler.html"> Table of Contents </a>
+ <p>
+ Prev <a href="01-Lexer.html"> Part 1: Lexical analysis </a>
+ <p>
+ Next <a href="03-Grammar.html"> Part 3: More about grammars </a>
+ <p>
+ Code Repository <a href="https://github.com/borismix/SimpleCompiler"> A Simple Compiler </a>
+ 
+  <hr>
+Copyright © 2022 SemWare Corporation. All rights reserved worldwide.
+  
+</body></html>
 
