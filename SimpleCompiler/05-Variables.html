@@ -1,1 +1,286 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+ 	"http://www.w3.org/TR/REC-html40/loose.dtd">
+<html><head>
+<meta http-equiv='Content-Type' content='text/html; charset=iso-8859-1'>
+<title>A Simple Compiler - Part 5: Variables</title>
+<!-- converted from text by grutatxt 2.0.13:1 on Tue Apr 15 13:23:31 2008 -->
+</head><body>
+<a name='a_simple_compiler_-_part_5:_variables'></a>
+<h1 class='level1'>A Simple Compiler - Part 5: Variables</h1>
+<p>
+<a name='introduction'></a>
+<h2 class='level2'>Introduction</h2>
+<p>
+In Part 4 we introduced the Symbol Table and Constants.  This
+article will deal with variables.
+<p>
+<a name='variables'></a>
+<h2 class='level2'>Variables</h2>
+<p>
+Variables are used to store program state information.  Unlike
+Constants, Variables can be modified during runtime.  We are
+going to add simple integer variables to Teeny.  Later, we will
+add booleans, characters, enumerations, and arrays of each of the
+simple types.
+<p>
+Variables also have to be stored somewhere.  This implies that
+the size of the variable is important.  In a compiler that
+generates code for a real machine, alignment issues must be dealt
+with.
+<p>
+Variables can also have a lifetime.  There are global variables,
+which maintain their value throughout the programs run. There are
+local variables, which lose their value when when the routine or
+class they were declared in goes out of scope.  A stack is a
+convenient structure to use for storing local variables.
+<p>
+Variables can also have visibility.  Typically, visibility is
+limited to a routine, a class, or a module.  In some instances,
+there can be variables that are always visible.
+<p>
+<a name='types'></a>
+<h2 class='level2'>Types</h2>
+<p>
+Variables are often associated with a type.  Typical types are
+character, integer, floating point, boolean, string and user
+defined.  In Teeny .05, the only variable type we will consider
+is integer.
+<p>
+As an aside, there is a long ongoing debate on static typing vs.
+dynamic typing, and strong typing vs. weak typing.  The argument
+goes that dynamic and weak typing make programming easier, which
+the other side says that static and strong typing makes programs
+more reliable.
+<p>
+For simplicity, we will only deal with static and strong typing.
+<p>
+<a name='declarations:'></a>
+<h2 class='level2'>Declarations:</h2>
+<p>
+How do you declare variables?  We will follow a Pascal-like
+approach, in order to make parsing simple.
+<p>
+<pre>
+ 'var' ident {',' ident} ';'
+</pre>
+<p>
+This says that a variable is declared by the keyword 'var',
+followed by one or more identifiers, separated by commas.  The
+list is terminated with a semicolon.  Since we only have a single
+type in Teeny v0.05 (integer), there is no need to also declare
+the variables type. When we add multiple types to Teeny, we will
+amend this production, adding the type.
+<p>
+<a name='operations_on_variables'></a>
+<h2 class='level2'>Operations on Variables</h2>
+<p>
+What types of operations can you do with variables:
+<p>
+<ul><li>You can set their value
+<li>You can read their value
+</ul>
+<p>
+For integers, you can perform all the standard arithmetic
+operations upon them.
+<p>
+It turns out that a stack (as used in our Virtual Machine) is
+ideal for working with integers, and makes code generation for
+arithmetic operations easy.
+<p>
+<a name='changes_to_the_teeny_v0.04_grammar'></a>
+<h2 class='level2'>Changes to the Teeny v0.04 Grammar</h2>
+<p>
+Lines marked with '!' are new or changed:
+<p>
+Teeny v0.05 grammar:
+<p>
+<pre>
+   Teeny     = 'program' ident ';' {Decl} CmpndStmt '.' .
+   Decl      = 'const' Const {',' Const } ';'
+ !           | 'var' ident {',' ident} ';'
+             .
+   Const     = ident '=' number .
+   CmpndStmt = 'begin' [Stmt {';' Stmt }] 'end' .
+   Stmt      = Writeln
+ !           | ident ':=' Expr .
+   Writeln   = 'writeln' '('
+               [(string|Expr) {',' (string|Expr) }] ')' .
+   Expr      = Term { ('+' | '-') Term } .
+   Term      = Factor { ('*' | '/') Factor } .
+   Factor    = number
+             | ident
+             | ('+' | '-') Factor
+             | '(' Expr ')'
+             .
+</pre>
+<p>
+As you can see, we have added the variable declaration
+production, and the assignment production.
+<p>
+Here is a sample Teeny v0.05 program:
+<p>
+<pre>
+ program five;
+ var x, y, z;
+ begin
+     x:=3;
+     y:=2;
+     z:=x+y*4;
+     writeln('z = ', z);
+ end.
+</pre>
+<p>
+<a name='changes_to_the_scanner'></a>
+<h2 class='level2'>Changes to the Scanner</h2>
+<p>
+The identifier "var" is now recognized.
+<p>
+<a name='changes_to_the_symbol_table'></a>
+<h2 class='level2'>Changes to the Symbol Table</h2>
+<p>
+We already have a place to store the identifiers name and value
+in the symbol table, from our addition of constants.  For
+variables, we also need a place to store the address of the
+variable.
+<p>
+A new routine, <code class='funcname'>enter_var()</code> was added to add variables (as opposed
+to constants) to the symbol table.  <code class='funcname'>enter_var()</code> sets the
+variables address, and then increments the the total space used
+by global variables.
+<p>
+<a name='changes_to_the_parser'></a>
+<h2 class='level2'>Changes to the Parser</h2>
+<p>
+Enumerated type var_t, and varsym added.
+<p>
+<code class='funcname'>factor()</code> updated to handle variables in expressions.  This mainly
+consists of discovering that the identifier is a variable, by
+consulting the symbol table.  Then, that symbol table reference
+is passed along to the code generator to generate code to load
+the variables value onto the stack.
+<p>
+We also have to account for new statements.  The EBNF for
+declaring variables is:
+<p>
+<pre>
+ 'var' ident {',' ident} ';'
+</pre>
+<p>
+This is handled in function <code class='funcname'>decl()</code>.  In pseudo code:
+<p>
+<pre>
+ if accept(varsym) then
+   repeat
+     expect(identsym)
+   until not accept(comma)
+ end if
+</pre>
+<p>
+For semantic checking, we make sure that the variable name is not
+already defined.  Finally, we need to enter this variable
+identifier into the symbol table, by calling <code class='funcname'>enter_var()</code>.
+<p>
+The EBNF for our assignment statement is:
+<p>
+<pre>
+ ident ':=' Expr .
+</pre>
+<p>
+This is handled in function <code class='funcname'>stmt()</code>.  In pseudo code:
+<p>
+<pre>
+ if accept(identsym) then
+   expect(assign)
+   <code class='funcname'>expression()</code>
+ end if
+</pre>
+<p>
+We also need to verify that the variable on the left hand side of
+the assignment statement exists.
+<p>
+<code class='funcname'>Expression()</code> places the result on the stack, and we call the code
+generator to generate code to store the result in the variable,
+using the symbol table reference.
+<p>
+<p>
+<a name='changes_to_the_code_generator'></a>
+<h2 class='level2'>Changes to the Code Generator</h2>
+<p>
+Added <code class='funcname'>load_value()</code> to load the value of a variable on the stack.
+<p>
+Added <code class='funcname'>store()</code> to store the top value in the stack into a
+variable.
+<p>
+<a name='changes_to_the_virtual_machine'></a>
+<h2 class='level2'>Changes to the Virtual Machine</h2>
+<p>
+The load (lod) and store (sto) instructions were added.
+<p>
+Load loads a value from a variable (in the stack) to the top of
+the stack.
+<p>
+Store stores the top value on the stack into a variable (also in
+the stack).
+<p>
+The interpreter now sets the initial stack pointer just above the
+allocated global data.  This implies that global variables are
+stored at the bottom of the stack.
+<p>
+<a name='summary'></a>
+<h2 class='level2'>Summary</h2>
+<p>
+We have added variables to our simple compiler.  And, it turned
+out to be amazingly easy.  So, what do we have?  We have a simple
+compiler, that can create and assign variables, and perform the
+standard arithmetic operations upon them.  Not very exciting,
+except that by taking small steps, it has been very easy to get
+to where we are.  Major reasons our journey has been so simple is
+that we have based our compiler on a concrete grammar, and have
+been careful to segregate the scanning from the parsing from the
+code generation.  It also helps that we are generating code for
+an idealized virtual machine :-)
+<p>
+Next time we will add a few control statements, which will allow
+us to write some simple programs that do something a little more
+exciting.
+<p>
+<a name='summary_of_changes'></a>
+<h2 class='level2'>Summary of Changes</h2>
+<p>
+<ul><li>changes:
+<ul><li>grammar:
+<ul><li>added 'var'
+<li>added assignment
+</ul></ul></ul>
+<p>
+<ul><li>teeny.cpp
+<ul><li>added lod/sto opcodes
+<li>added VM code to implement lod/sto
+<li>added 'var' keyword
+<li>added ':=' symbol
+<li>added enter_var routine to symbol table
+<li>added variable to factor
+<li>added assignment statement to stmt
+<li>added variable recognition to declarations parser
+<li>updated symbol table to handle variables and their address
+<li>updated the VM to allocate space for global variables
+</ul></ul>
+<p>
 
+<hr>
+ <p>
+ <a href="Compiler.html"> Table of Contents </a>
+ <p>
+ Prev <a href="04-Semantic.html"> Part 4: Semantic Analysis - the Symbol Table </a>
+ <p>
+ Next <a href="06-Statements.html"> Part 6: Control Statements </a>
+ <p>
+ Code Repository <a href="https://github.com/borismix/SimpleCompiler"> A Simple Compiler </a>
+ 
+  <hr>
+Copyright © 2022 SemWare Corporation. All rights reserved worldwide.
+  
+  
+  
+  
+  </body></html>
