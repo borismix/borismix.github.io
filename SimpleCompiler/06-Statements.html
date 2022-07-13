@@ -1,1 +1,665 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+ 	"http://www.w3.org/TR/REC-html40/loose.dtd">
+<html><head>
+<meta http-equiv='Content-Type' content='text/html; charset=iso-8859-1'>
+<title>A Simple Compiler - Part 6: Control Statements</title>
+<!-- converted from text by grutatxt 2.0.13:1 on Tue Apr 15 13:23:39 2008 -->
+</head><body>
+<a name='a_simple_compiler_-_part_6:_control_statements'></a>
+<h1 class='level1'>A Simple Compiler - Part 6: Control Statements</h1>
+<p>
+<a name='introduction'></a>
+<h2 class='level2'>Introduction</h2>
+<p>
+In this installment, we will add control statements to Teeny,
+thus allowing us to write simple programs that do something
+interesting.
+<p>
+To whet your appetite just a little, here is a Teeny v0.06
+program to compute all the primes between 3 and 100:
+<p>
+<pre>
+  program primes;
+  const limit = 100;
+  var i, j, prime;
+  begin
+    i := 3;
+    while i &lt;= limit do begin
+      j := i div 2;
+      prime := 1;
+      while (prime &lt;&gt; 0) and (j &gt; 1) do begin
+        if i mod j = 0 then
+          prime := 0;
+        j := j - 1;
+      end;
+      if prime &lt;&gt; 0 then
+        writeln(i, ' is prime');
+      i := i + 1;
+    end;
+  end.
+</pre>
+<p>
+<a name='control_statements'></a>
+<h2 class='level2'>Control Statements</h2>
+<p>
+We will add the 'if' and 'while' control statements to Teeny. The
+'if' and 'while' statements are ubiquitous, appearing in
+virtually all mainstream imperative programing languages.  As
+with the rest of Teeny, we will implement them in the same
+fashion as they are implemented in the language Pascal.
+<p>
+Before we actually add the 'if' and 'while' statements, we need
+to make another slight change to the grammar.  In .05 we had:
+<p>
+<pre>
+  CmpndStmt = 'begin' [Stmt {';' Stmt }] 'end' .
+</pre>
+<p>
+<pre>
+  Stmt      = Writeln
+            | ident ':=' Expr
+            .
+</pre>
+<p>
+In .06 we need to add CmpndStmt to Stmt, as follows:
+<p>
+<pre>
+  CmpndStmt = 'begin' [Stmt {';' Stmt }] 'end' .
+</pre>
+<p>
+<pre>
+  Stmt      = Writeln
+            | ident ':=' Expr
+            | CmpndStmt
+            .
+</pre>
+<p>
+The stmt routine will now check for 'begin', and if found, call
+CmpndStmt.
+<p>
+With that out of the way, we can proceed with the business at
+hand.
+<p>
+<a name='the_while_statement'></a>
+<h2 class='level2'>The while statement</h2>
+<p>
+We will tackle the 'while' statement first, since it is slightly
+simpler than the 'if' statement.
+<p>
+Examples of the 'while' statement:
+<p>
+<pre>
+ while expr do
+     stmt;
+</pre>
+<p>
+<pre>
+ while expr do begin
+     stmt;
+     stmt;
+ end;
+</pre>
+<p>
+As you can see, the 'begin' and 'end' pairs are only needed when
+there is more than one statement that follows the 'do'.
+<p>
+This is what we will add to our grammar to allow the 'while'
+statement:
+<p>
+<pre>
+ 'while' expr 'do' stmt
+</pre>
+<p>
+This says, if 'while' is found, it must be followed by an expr,
+followed by the keyword 'do', followed by stmt.  And as can be
+seen from the Stmt grammar above, stmt can be 1 or more
+statements.
+<p>
+The Stmt production now looks like this:
+<p>
+<pre>
+  Stmt      = Writeln
+            | ident ':=' Expr
+            | 'while' expr 'do' stmt
+            | CmpndStmt
+            .
+</pre>
+<p>
+Parsing the 'while' statement turns out to be extremely simple -
+just follow the grammar rules:
+<p>
+<pre>
+ if accept(whilesym) then
+     <code class='funcname'>expr()</code>
+     expect(do)
+     <code class='funcname'>stmt()</code>
+ end
+</pre>
+<p>
+Of course we have left out code generation and any needed
+semantic checks.  More on these later.
+<p>
+<a name='the_if_statement'></a>
+<h2 class='level2'>The if statement</h2>
+<p>
+The 'if' statement is only slightly more complex than the 'while'
+statement, due to the presence of the optional 'else' statement.
+<p>
+Examples of the 'if' statement:
+<p>
+<pre>
+ if expr then
+     stmt;
+</pre>
+<p>
+<pre>
+ if expr then begin
+     stmt;
+     stmt;
+ end;
+</pre>
+<p>
+Examples of the 'if' - 'else' statement:
+<p>
+<pre>
+ if expr then stmt else stmt;
+</pre>
+<p>
+<pre>
+ if expr then begin
+     stmt;
+     stmt;
+ end else begin
+     stmt;
+     stmt;
+ end;
+</pre>
+<p>
+And this is what we will add to our grammar to allow the 'if'
+statement:
+<p>
+<pre>
+ 'if' expr 'then' stmt ['else' stmt]
+</pre>
+<p>
+This says if 'if' is found, if must be followed by an expr,
+followed by the keyword 'then', followed by stmt.  Optionally, an
+'else' can occur, which is followed by stmt.
+<p>
+You should note that this rule forces the 'else' to bind to the
+closest occurring 'if'.  This is the accepted standard for all
+mainstream programming languages.
+<p>
+Here is how Stmt looks with the 'if' statement added:
+<p>
+<pre>
+  Stmt      = Writeln
+            | ident ':=' Expr
+            | 'while' expr 'do' stmt
+            | 'if' expr 'then' stmt ['else' stmt]
+            | CmpndStmt
+            .
+</pre>
+<p>
+The 'if' statement is a little harder to parse than the 'while'
+statement, because of the optional part.  How would you parse
+thte 'if' statement?  Following the rules of our grammar, we
+obtain the following for the 'if' statement (Remember that '[]'
+enclose optional items in our grammar rules):
+<p>
+<pre>
+ if accept(ifsym) then
+     <code class='funcname'>expr()</code>
+     expect(thensym)
+     <code class='funcname'>stmt()</code>
+     if accept(elsesym) then
+         stmt
+     end
+ end
+</pre>
+<p>
+As you can see from this, if we have a well formed grammar,
+parsing really is easy.
+<p>
+<a name='boolean_expressions'></a>
+<h2 class='level2'>Boolean Expressions</h2>
+<p>
+Something you may have noticed is the lack of boolean operators
+in the current version of Teeny.  We are going to have to add
+these in order to be able to use our new 'if' and 'while'
+statements.  The boolean operators we will add are:
+<p>
+<ul><li>'and'
+<li>'or'
+<li>'='
+<li>'&lt;&gt;'
+<li>'&lt;'
+<li>'&lt;='
+<li>'&gt;'
+<li>'&gt;='
+</ul>
+<p>
+We will also need to update our productions for expressions.  The
+new production rules are:
+<p>
+<pre>
+  Expr      = SimpExpr
+              [ ('=' | '&lt;&gt;' | '&lt;' | '&lt;=' | '&gt;' | '&gt;=' )
+              SimpExpr ] .
+  SimpExpr  = Term { ('+' | '-' | 'or') Term } .
+  Term      = Factor { ('*' | 'div' | 'mod' | 'and') Factor } .
+  Factor    = number
+            | ident
+            | ('+' | '-') Factor
+            | '(' Expr ')'
+            .
+</pre>
+<p>
+<a name='precedence'></a>
+<h2 class='level2'>Precedence</h2>
+<p>
+What does precedence mean?  Simply put, it has to do with which
+expression operator will be performed first.  Operators with a
+higher precedence are performed before operators with lower
+precedence.  Ideally, we want our precedence to follow standard
+algebraic conventions, so that the programmer will encounter no
+surprises.  For instance:
+<p>
+<pre>
+ 2 + 3 * 4
+</pre>
+<p>
+The standard rules of algebra cause us to evaluate the
+multiplication first, and then the addition, since multiplication
+has higher precedence than addition.  A programmer would not be
+happy if the answer to the above expression was 20 instead of 14,
+when compiled by the Teeny compiler.
+<p>
+The precedence that our expression grammar forces is the
+following:
+<p>
+<ul><li>Unary operators have the highest precedence.
+<li>Next comes multiplicative operators.
+<li>Next comes additive operators.
+<li>Relational operators come last, having the lowest precedence.
+</ul>
+<p>
+This is fairly standard, except for our placement of 'or' and
+'and'.  In C-like languages (C++, Java, C# and many others) 'and'
+and 'or' have a lower precedence than the relational operators.
+This allows us to use 'and' and 'or' without parenthesis, as in
+the following:
+<p>
+<pre>
+ if ch &gt;= 'a' and ch &lt;= 'z' then
+</pre>
+<p>
+Because 'and' has a lower precedence than the relational
+operators, we can be confident that the relational operations
+will be performed first.
+<p>
+However, in Pascal, 'and' is given the same precedence as as
+multiply, and 'or' is given the same precedence as addition.  The
+result of this is that you must always place expressions
+containing 'and' or 'or' in parenthesis, as in the following:
+<p>
+<pre>
+ if (ch &gt;= 'a') and (ch &lt;= 'z') then
+</pre>
+<p>
+Because Teeny is intended to be a Pascal-like language, we will
+use the Pascal precedence, rather than the C precedence.
+<p>
+<a name='more_about_boolean_expressions'></a>
+<h2 class='level2'>More about Boolean Expressions</h2>
+<p>
+Now that we have added relational and logical operators to Teeny,
+we have a language dilemma.  What is the result of the following
+statement?
+<p>
+Assume that 'a' and 'b' have been declared to be of type integer.
+<p>
+<pre>
+  a := 10 &gt; 5;
+  b := 15 &gt; 20;
+</pre>
+<p>
+In you are a C or C++ programmer, you would say that 'a' is
+assigned the value 1, and 'b' is assigned the value 0.
+<p>
+However, if you are a Java, C# or Pascal programmer, you would
+say that "this will not compile".  Why?  Because in the
+Java/C#/Pascal world, only boolean types can be assigned a
+boolean value.  "10 &gt; 5" is a boolean expression, and therefor
+can only be assigned to a boolean type.  C and C++ loosen things
+up, allowing virtually any type of expression to be assigned to
+an integer.  While C++ does add a boolean type, it is really just
+for documentation purposes.
+<p>
+Which approach is best?  Personally, I prefer the Java/C#/Pascal
+way.  It actually does not make a very big impact on actual code,
+but I have found that it is yet another device to help protect
+the programmer from certain mistakes.
+<p>
+Why this discussion?  In Teeny, I had to decide if I was going to
+support the C/C++ semantics or the Java/C#/Pascal semantics.
+Since Teeny is an almost true subset of Pascal, I decided to
+follow the Java/C#/Pascal semantics in regards to boolean
+expressions.  However, this does add complications to the
+compiler.  As well as accepting valid language statements,
+compilers also much reject invalid language statements. Even
+though the current version of Teeny has only integer types, we
+must code the compiler in such a way as to disallow assigning the
+results of boolean expressions to integer variables.  Note that
+this semantic check is not expressed in our grammar.  While there
+are specification systems that can express these types of things,
+they are not nearly so easy to use as EBNF.
+<p>
+<a name='grammar_for_teeny_v0.06'></a>
+<h2 class='level2'>Grammar for teeny v0.06</h2>
+<p>
+We are now ready to present the complete grammar for Teeny v0.06:
+<p>
+<pre>
+  Teeny     = 'program' ident ';' {Decl} CmpndStmt '.' .
+  Decl      = 'const' Const {',' Const } ';'
+            | 'var' ident {',' ident} ';'
+            .
+  Const     = ident '=' number .
+  CmpndStmt = 'begin' [Stmt {';' Stmt }] 'end' .
+  Stmt      = Writeln
+            | ident ':=' Expr
+            | 'if' expr 'then' Stmt ['else' Stmt]
+            | 'while' expr 'do' Stmt
+            | CmpndStmt
+            .
+  Writeln   = 'writeln' '('
+              [(string|Expr) {',' (string|Expr) }] ')' .
+  Expr      = SimpExpr
+              [ ('=' | '&lt;&gt;' | '&lt;' | '&lt;=' | '&gt;' | '&gt;=' )
+              SimpExpr ] .
+  SimpExpr  = Term { ('+' | '-' | 'or') Term } .
+  Term      = Factor { ('*' | 'div' | 'mod' | 'and') Factor } .
+  Factor    = number
+            | ident
+            | ('+' | '-') Factor
+            | '(' Expr ')'
+            .
+</pre>
+<p>
+<a name='changes'></a>
+<h2 class='level2'>Changes</h2>
+<p>
+<a name='changes_to_the_scanner'></a>
+<h2 class='level2'>Changes to the Scanner</h2>
+<p>
+In trying to make Teeny a true Pascal subset, I changed the
+divide operator from '/' to 'div'.  This was simply a matter of
+adding 'div' to the list of keywords.
+<p>
+Additionally, the scanner needs to recognize the new operators.
+The single character operators are simple to scan, so I will not
+say any more about them.
+<p>
+The multiple character operators take a little bit of thought, so
+I will illustrate the most complicated, the less than or equal
+operator, '&lt;='.
+<p>
+The complication arises in that when a '&lt;' is found, it must be
+determined if less than, less than or equal, or not equal has
+been found.  A solution in pseudo code is:
+<p>
+<pre>
+  when '&lt;'
+    <code class='funcname'>read_ch()</code>           -- skip '&lt;'
+    if ch = '=' then
+      <code class='funcname'>read_ch()</code>
+      return less than  -- '&lt;=' found
+    end
+    if ch = '&gt;' then
+      <code class='funcname'>read_ch()</code>         -- skip '&gt;'
+      return not equal  -- '&lt;&gt;' found
+    end
+    return less than    -- just '&lt;' found
+</pre>
+<p>
+Similar code is used for the other multiple character operators.
+<p>
+<a name='changes_to_the_virtual_machine'></a>
+<h2 class='level2'>Changes to the Virtual Machine</h2>
+<p>
+We need to add the following binary operators to the Teeny
+Virtual Machine:
+<p>
+<ul><li>lss - less than
+<li>leq - less than or equal
+<li>gtr - greater than
+<li>geq - greater than or equal
+<li>eql - equal
+<li>neq - not equal
+<li>and - logical and
+<li>or  - logical or
+</ul>
+<p>
+These are all implemented in a similar way to the arithmetic
+operators.
+<p>
+Each binary operator expects two integers on the stack.  The
+operator in question is performed on the two stack items, the two
+items are popped off the stack, and the result is then pushed
+onto the stack.
+<p>
+For instance, the add operator is:
+<p>
+<pre>
+  pop a
+  pop b
+  temp = a + b
+  push temp
+</pre>
+<p>
+The less than (lss) operator is:
+<p>
+<pre>
+  pop a
+  pop b
+  temp = a &lt; b
+  push temp
+</pre>
+<p>
+add is implemented as:
+<p>
+<pre>
+  add: top--; stack[top] += stack[top + 1]; break;
+</pre>
+<p>
+lss is implemented as:
+<p>
+<pre>
+  lss: top--; stack[top] = stack[top] &lt;  stack[top + 1]; break;
+</pre>
+<p>
+Two other instructions added to the Virtual Machine are jump
+(jmp) and jump-if-zero (jz).
+<p>
+Both of them have the target address as their operand.  jmp is
+unconditional, the jump is always taken.  jz is conditional.  If
+the top word on the stack is 0, the jump is taken, otherwise it
+is not.  In either case, the stack is popped.
+<p>
+<a name='changes_to_the_code_generator'></a>
+<h2 class='level2'>Changes to the code generator</h2>
+<p>
+We added the backpatch method.  This is used to patch the operand
+of jump instructions, that were not know at the time the code had
+to be generated.
+<p>
+<a name='changes_to_the_parser'></a>
+<h2 class='level2'>Changes to the parser</h2>
+<p>
+This is where the major changes to the compiler occurred for this
+installment.  And many of those changes had to do with semantic
+checks.
+<p>
+All expression routines had to be changed to return the type of
+binary expression that was parsed.  The routines return whether
+they parsed a boolean or an integer expression.
+<p>
+The Expr production rule returns a boolean type, while all the
+other production rules (SimpExpr, Term, Factor) return an integer
+type.  Additionally, each expression parsing routine checks to
+make sure that the binary operand types matches the allowable
+operator type.  For instance, 'and' and 'or' require boolean
+operands, while the arithmetic operators require integer
+operands.  Invalid expressions such as:
+<p>
+<pre>
+ (10 &gt; 1) + 5
+</pre>
+<p>
+must be caught and flagged with a compilation error.
+<p>
+Additionally, the 'if' and 'while' statements insure that the
+'expr' part of the statement is of boolean type.  And the
+assignment statement insures that the result of 'expr' is the
+same type as the left hand side of the ':='.
+<p>
+As an example of the changes to expression parsing, we will look
+at the term method.  Term previously looked like this:
+<p>
+<pre>
+  <code class='funcname'>term()</code>
+    <code class='funcname'>factor()</code>
+    while <code class='funcname'>is_mulop()</code> do
+      op = sym
+      <code class='funcname'>getsym()</code>
+      <code class='funcname'>factor()</code>
+      gen(op)
+    end
+</pre>
+<p>
+Now, in order to do type checking, <code class='funcname'>term()</code> is changed to:
+<p>
+<pre>
+  <code class='funcname'>term()</code>
+    int x, y
+    x = <code class='funcname'>factor()</code>          -- save the type
+    while <code class='funcname'>is_mulop()</code> do
+      op = sym
+      if sym = 'and' then
+        mustbe(bool, x)   -- type check
+      else
+        mustbe(int, x)    -- type check
+      <code class='funcname'>getsym()</code>
+      y = <code class='funcname'>factor()</code>
+      mustbe(x, y)        -- type check
+      gen(op)
+    end
+    return x
+</pre>
+<p>
+<code class='funcname'>factor()</code> returns the type it found.  The operator is processed,
+then depending on the operator, the type is checked to make sure
+it is allowable.
+<p>
+<a name='code_generation_for_the_while_statement'></a>
+<h2 class='level2'>Code generation for the 'while' statement</h2>
+<p>
+The 'while' statement looks like:
+<p>
+<pre>
+  while expr do
+    stmt
+</pre>
+<p>
+This means while the result of expr is true, do the following
+statements. The first time expr is false, skip to the statement
+immediately following the end of the loop.
+<p>
+To see how we would implement code for this, let us think about
+wow would we code this in a lower level language.  Something like
+the following (this is how we coded 'while' loops in very old
+versions of Basic):
+<p>
+<pre>
+ l1:
+   if not expr goto l2
+   stmt
+   goto l1
+ l2:
+</pre>
+<p>
+And that is just the code we will generate for the 'while'
+statement.
+<p>
+From the above, we can see that there are two jumps that will
+need to be generated, one conditional, and one unconditional.
+Additionally, one of the jumps will be generated at a time when
+we do not know the target address.  So, two addresses must be
+saved for later use: the top of the loop address, and the address
+of the conditional jump instruction, so that we can later patch
+it with the correct address.
+<p>
+<pre>
+  if accept('while') then
+  -- get and save the address of the start of the expression
+    loop_top = gen.<code class='funcname'>getcx()</code>
+  -- generate the code for the expression
+    x = <code class='funcname'>expr()</code>
+  -- type check
+    mustbe(bool, x)
+  -- now save the address where the next instruction goes
+    patch = gen.<code class='funcname'>getcx()</code>
+  -- generate a jump out of the 'while' loop
+    gen.<code class='funcname'>jump_false()</code>
+    expect('do')
+  -- generate code for the statement part
+    <code class='funcname'>stmt()</code>
+  -- jump back to the expression
+    gen.jump(loop_top)
+  -- and patch the 'jz' we generated above
+    gen.backpatch(patch)
+</pre>
+<p>
+<a name='summary'></a>
+<h2 class='level2'>Summary</h2>
+<p>
+We have come a long way.  We now have a compiler that can compile
+a simple language.  But this language includes a full compliment
+of operators, enforces the proper precedence and type checking.
+It includes assignment, console output, and the 'if' and 'while'
+statements.  By the way, 'if' and 'while' statements can be
+nested to virtually any reasonable level.  Our target language,
+even though dead simple and still just a toy, can process simple
+algorithms, such as a brute force prime number generator.  And
+all of this in only 750 lines of source code.
+<p>
+This installment covered control statements, and what is involved
+in compiling them.
+<p>
+We had a sojourn about type checking and boolean expressions, and
+how different language families allow or do not allow certain
+constructs.
+<p>
+I hope that we have learned just how easy lexical analysis and
+parsing can be.  And I hope this lesson has taught you that
+semantic analysis and code generation is where most of the
+complication in compiling lurks.
+<p>
+Finally, I have tried to emphasize that it is a must to follow a
+grammar when writing a compiler.
+<p>
 
+   <hr>
+ <p>
+ <a href="Compiler.html"> Table of Contents </a>
+ <p>
+ Prev <a href="05-Variables.html"> Part 5: Variables </a>
+ <p>
+ Code Repository <a href="https://github.com/borismix/SimpleCompiler"> A Simple Compiler </a>
+ 
+  <hr>
+Copyright © 2022 SemWare Corporation. All rights reserved worldwide.
+
+  
+</body></html>
