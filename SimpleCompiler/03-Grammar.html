@@ -1,1 +1,270 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+ 	"http://www.w3.org/TR/REC-html40/loose.dtd">
+<html><head>
+<meta http-equiv='Content-Type' content='text/html; charset=iso-8859-1'>
+<title>A Simple Compiler - Part 3: More about grammars.</title>
+<!-- converted from text by grutatxt 2.0.13:1 on Tue Apr 15 13:27:20 2008 -->
+</head><body>
+<a name='a_simple_compiler_-_part_3:_more_about_grammars.'></a>
+<h1 class='level1'>A Simple Compiler - Part 3: More about grammars.</h1>
+<p>
+Some notes about the teeny compiler listing from last time:
+<p>
+Code is generated for a virtual machine.  This virtual machine is
+based on the ones found in the texts by Wirth and Terry.
+<p>
+There is no error recovery - when an error is found, the compiler
+simply halts.  We'll improve this in the future.
+<p>
+In the scanner, idsym is assigned to the (empty) last entry in
+the keywords table, hence idsym is the Symbol type if the symbol
+is not a keyword.  Also, the keywords table is searched in a
+linear fashion.  In a production compiler, a hash table should be
+used.
+<p>
+<a name='more_about_grammars:'></a>
+<h2 class='level2'>More about grammars:</h2>
+<p>
+We've looked at some very simple grammars.  Do you remember the
+difference between terminals (basic language elements) and
+non-terminals (syntactic elements that are substituted for). Do
+you remember the EBNF meta symbols?  () for grouping, | for
+alternation, {} for items occurring zero or more times, and []
+for optional items.
+<p>
+Ready for something a little more complex?  Remember our writeln
+statement?  Lets allow for multiple strings, separated by commas,
+so that we can now write:
+<p>
+<pre>
+ writeln("string 1", "string 2", "string 3")
+</pre>
+<p>
+This isn't really useful now, but it will be once our language
+supports expressions.  Here is the grammar:
+<p>
+<pre>
+ Writeln = 'writeln' '(' String { ',' String } ')' .
+</pre>
+<p>
+This says that writeln expects a left parenthesis, followed by a
+string, optionally followed by zero or more Strings, separated by
+commas.  How would we parse this?
+<p>
+<pre>
+ if accept(writeln)
+   expect(lparen)
+   expect(litstrsym)
+   while accept(comma)
+     expect(litstrsym)
+   end
+   expect(rparen)
+ end
+</pre>
+<p>
+See how the parsing code follows the grammar?  As an aside, we
+could rewrite the above as:
+<p>
+<pre>
+ if accept(writeln)
+   expect(lparen)
+   repeat
+     expect(litstrsym)
+   until not accept(comma)
+   expect(rparen)
+ end
+</pre>
+<p>
+But let's slightly change the grammar, so that the parameters to
+Writeln are optional.  That way, we can write just a newline by
+itself:
+<p>
+<pre>
+ Writeln = 'writeln' '(' [String { ',' String }] ')' .
+</pre>
+<p>
+Now the code becomes:
+<p>
+<pre>
+ if accept(writeln)
+   expect(lparen)
+   if not accept(rparen)
+     repeat
+       expect(litstrsym)
+     until not accept(comma)
+     expect(rparen)
+   endif
+ end
+</pre>
+<p>
+What about arithmetic expressions, for instance just the basics,
+those including plus, minus, multiply and divide.
+<p>
+<pre>
+ Expr    = Term {('+'|'-') Term} .
+ Term    = Factor {('*'|'/') Factor} .
+ Factor  = number
+         | ('+'|'-') Factor
+         | '(' Expr ')'
+         .
+</pre>
+<p>
+Do you see how the above grammar forces the standard arithmetic
+precedence?
+<p>
+How would we parse the above?  Just like we've been doing all
+along.  Here goes:
+<p>
+To parse Expr:
+<p>
+<pre>
+  Expr = Term {('+'|'-') Term} .
+</pre>
+<p>
+<pre>
+ <code class='funcname'>expr()</code>
+   <code class='funcname'>term()</code>
+   while sym in [plus, minus]
+     <code class='funcname'>getsym()</code>
+     <code class='funcname'>term()</code>
+   end
+ end
+</pre>
+<p>
+<pre>
+  Term = Factor {('*'|'/') Factor} .
+</pre>
+<p>
+<pre>
+ <code class='funcname'>term()</code>
+   <code class='funcname'>factor()</code>
+   while sym in [multiply, divide]
+     <code class='funcname'>getsym()</code>
+     <code class='funcname'>factor()</code>
+   end
+ end
+</pre>
+<p>
+<pre>
+  Factor  = number
+          | ('+'|'-') Factor
+          | '(' Expr ')'
+          .
+</pre>
+<p>
+<pre>
+ <code class='funcname'>factor()</code>
+   if sym == number
+     <code class='funcname'>getsym()</code>
+   elseif sym in [plus, minus]
+     <code class='funcname'>getsym()</code>
+     <code class='funcname'>factor()</code>
+   elseif sym == lparen
+     <code class='funcname'>getsym()</code>
+     <code class='funcname'>expr()</code>
+     expect(rparen)
+   else
+     <code class='funcname'>error()</code>
+   end
+ end
+</pre>
+<p>
+I'm not trying to overemphasize this point, but do you see how
+simple it is to implement the parser, as long as you have a
+grammar?  See how important a grammar is?
+<p>
+But all isn't quite as easy as it seems.  In order to parse your
+grammar via recursive descent, you must make sure that your
+grammar is not ambiguous.  Here is an example of an ambiguous
+grammar:
+<p>
+<pre>
+ Statement = 'if' Expr 'then' StmtSeq 'end'
+           | 'while' Expr 'do' StmtSeq 'end'
+           | ident ':=' Expr
+           | ident '(' [ Expr {',' Expr}] ')'
+           .
+</pre>
+<p>
+Can you see the ambiguity?  Both assignment (ident ':=' Expr) and
+procedure call (ident '(' [ Expr {',' Expr}] ')') start with the
+same terminal.  This won't work in a recursive descent parser.
+For that, we would need to use a more sophisticated algorithm.
+<p>
+So how can we solve this problem?  Well, the only way is to
+either redesign your language or somehow change the grammar in an
+appropriate fashion. We'll solve the problem by doing the latter
+when we implement assignment and procedures.
+<p>
+Here is the new grammar for our teeny (version .03) language:
+<p>
+<pre>
+ Teeny     = 'program' ident ';' CmpndStmt '.' .
+ CmpndStmt = 'begin' [Stmt {';' Stmt }] 'end' .
+ Stmt      = Writeln .
+ Writeln   = 'writeln' '(' [(string|Expr)
+               {',' (string|Expr) }] ')' .
+ Expr      = Term { ('+' | '-') Term } .
+ Term      = Factor { ('*' | '/') Factor } .
+ Factor    = number
+           | ('+' | '-') Factor
+           | '(' Expr ')'
+           .
+</pre>
+<p>
+And here is a sample teeny v0.03 program:
+<p>
+<pre>
+ program three;
+ begin
+   writeln('hello, world!');
+   writeln('2 + 3 * 4 = ', 2 + 3 * 4);
+ end.
+</pre>
+<p>
+It took about 100 lines of code to implement the new features.
+The major changes are listed here:
+<p>
+<ul><li>To the Virtual Machine interpreter:
+<ul><li>Added new instructions
+<ul><li>wri - write an integer
+<li>lit - load an integer constant on the stack
+<li>neg - negate the integer at top
+<li>mul, dvd, add, sub: replace top-1 with the appropriate operation applied to top and top - 1
+</ul></ul></ul>
+<p>
+<ul><li>Added a stack for variable evaluation.
+</ul>
+<p>
+<ul><li>To the VirtualMachine:
+<ul><li>Added methods to encapsulate code generation and make the parser less knowledgeable about what kind of machine code is generated for.
+</ul></ul>
+<p>
+<ul><li>To the Scanner:
+<ul><li>Added various operators ('-', '/', ',')
+</ul></ul>
+<p>
+<ul><li>To the Parser:
+<ul><li>Updated to handle new grammar
+</ul></ul>
+<p>
+Next time we'll implement integer constants.
+<p>
+
+   <hr>
+ <p>
+ <a href="Compiler.html"> Table of Contents </a>
+ <p>
+ Prev <a href="02-Parser.html"> Part 2: Syntax analysis </a>
+ <p>
+ Next <a href="04-Semantic.html"> Part 4: Semantic Analysis - the Symbol Table </a>
+ <p>
+ Code Repository <a href="https://github.com/borismix/SimpleCompiler"> A Simple Compiler </a>
+ 
+  <hr>
+Copyright © 2022 SemWare Corporation. All rights reserved worldwide.
+  
+  
+  
+  </body></html>
 
