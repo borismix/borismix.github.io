@@ -1,1 +1,393 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+ 	"http://www.w3.org/TR/REC-html40/loose.dtd">
+<html><head>
+<meta http-equiv='Content-Type' content='text/html; charset=iso-8859-1'>
+<title>A Simple Compiler - Part 4: Semantic Analysis - the Symbol Table</title>
+<!-- converted from text by grutatxt 2.0.13:1 on Wed Dec  5 10:58:33 2012 -->
+</head><body>
+<a name='a_simple_compiler_-_part_4:_semantic_analysis_-_the_symbol_table'></a>
+<h1 class='level1'>A Simple Compiler - Part 4: Semantic Analysis - the Symbol Table</h1>
+<p>
+<a name='introduction'></a>
+<h2 class='level2'>Introduction</h2>
+<p>
+A Review:
+<p>
+Before we get started this time, let us review what we have
+covered so far.
+<p>
+In compiler development, design is king.  If you design your
+language before you start coding, you'll have a much better
+chance at success.  Along these lines, developing a well-thought
+out and non-ambiguous grammar is a must.  You simply cannot skip
+this step.
+<p>
+<ul><li>Lexical analysis or scanning is relatively easy, given a non-ambiguous language to scan.
+<ul><li>Remember the typical format of a scanner:
+<ul><li>A single entry point, that returns successive symbols from the input stream.  That entry point should:
+<li>ignore whitespace
+<li>switch on the character following the whitespace, and decode it appropriately.
+</ul><li>see this installments Teeny .04 for an example of a simple scanner.
+</ul><li>Parsing is also relatively easy, given the proper grammar. With a proper grammar, it becomes almost a mechanical translation, hence the plethora of parser generators.
+<ul><li>In many compilers, the parser builds an abstract syntax tree (AST). In our toy compiler, we have dispensed with the AST so far, and simply generate code as soon as we recognize a production.  But eventually we'll generate an AST, and generate code from that.
+</ul><li>Semantic analysis is where compiling starts getting more difficult.  Determining the meaning of language constructs, especially once you have multiple data types, can quickly become complicated.
+<li>Code generation (for a real machine) can be very difficult. While generation of lousy code (redundant loads/stores, not taking advantage of all available registers, and a myriad of machine specific idioms) can be done without too much work, who wants to use a compiler that generates lousy code?  Generation of code that would make a seasoned assembly language programmer proud is very difficult.  For an example, read up on the history of the GNU C compiler.  If you want to generate fast efficient code, expect to spend lots of time and lots of research in this portion of the compiler.
+</ul>
+<p>
+<a name='grammar:'></a>
+<h2 class='level2'>Grammar:</h2>
+<p>
+A grammar is composed of rules.  Each rule is called a
+production.
+<p>
+Productions are composed of terminals and non-terminals.
+Terminals are language elements, such as keywords and operators.
+<p>
+The syntax for productions that we are using is: a non-terminal
+on the left, followed by an equal sign, and then the rule(s) for
+that production, terminated with a period.
+<p>
+For instance:
+<p>
+<pre>
+ Teeny = 'program' ident ';' CmpndStmt '.' .
+</pre>
+<p>
+'Teeny' is a non-terminal, 'program', 'ident', ';' and '.' are
+terminals. 'CmpndStmt' is another terminal, and must be defined
+for the grammar to be complete.
+<p>
+Special symbols used include '|' (or) for alternation, '(' and
+')' for grouping, '[', ']' means optional, and '{', '}' means
+zero or more.
+<p>
+We also reviewed a simple formula for converting grammar rules to
+actual parsing code.
+<p>
+For example, here is the Teeny 03 grammar for expressions:
+<p>
+<pre>
+ Expr      = Term { ('+' | '-') Term } .
+ Term      = Factor { ('*' | '/') Factor } .
+ Factor    = number
+           | ('+' | '-') Factor
+           | '(' Expr ')'
+           .
+</pre>
+<p>
+As written, this causes negation to have the highest precedence,
+followed by multiplication and division, and finally, addition
+and subtraction.  Can you determine why?
+<p>
+For example, given the following expression: 2 * -4
+<p>
+We start with 'Expr'.  The first symbol on the right hand side is
+'Term'.  Term is a non-terminal, so we find the Term production.
+The Term production leads us to Factor, another non-terminal.  We
+find Factor.  Factor gives us a list of choices.  '2' is a
+number, so we have a match.  The Factor production has been
+satisfied, so we return back to Term.  The rest of our expression
+is now: '* - 4'. Next, Terms says to look for zero or more '*' or
+'/' followed by another Factor.  The '*' in our test expression
+is matched, so now we go back to Factor again.  The restof of our
+expression is now: '-4'. This time in Factor we don't have a
+number, we have '-'.  And Factor has a rule for that.  This rule
+takes the '-', and then invokes Factor again.  Recursing into
+Factor, all that is left of our sample expression is: '4'. This
+matches number, and so return back to Term.  Our sample
+expression is now: '' (the empty string).  There is not another
+'*' or '/', so we return to Expr. There is not a '+' or '-', so
+we have finished parsing our sample expression.
+<p>
+Assuming that sym is set to the first symbol in the input stream,
+code that implements these rules follows:
+<p>
+<pre>
+ def expr
+   <code class='funcname'>term()</code>
+   while sym in ['+', '-']
+     <code class='funcname'>getsym()</code>
+     <code class='funcname'>term()</code>
+   end
+ end
+</pre>
+<p>
+<pre>
+ def term
+   <code class='funcname'>factor()</code>
+   while sym in ['*', '/']
+     <code class='funcname'>getsym()</code>
+     <code class='funcname'>factor()</code>
+   end
+ end
+</pre>
+<p>
+<pre>
+ def factor
+   case sym
+     number : <code class='funcname'>getsym()</code>
+     '+' : <code class='funcname'>getsym()</code>; <code class='funcname'>factor()</code>
+     '-' : <code class='funcname'>getsym()</code>; <code class='funcname'>factor()</code>
+     '(' : <code class='funcname'>getsym()</code>; <code class='funcname'>expr()</code>; expect(')')
+     otherwise error('expecting a factor')
+   end
+ end
+</pre>
+<p>
+Note how closely the implementation code follows the grammar.
+<p>
+<p>
+<a name='the_symbol_table'></a>
+<h2 class='level2'>The Symbol Table</h2>
+<p>
+Constants:
+<p>
+Our current grammar is:
+<p>
+<pre>
+ Teeny     = 'program' ident ';' CmpndStmt '.' .
+ CmpndStmt = 'begin' [Stmt {';' Stmt }] 'end' .
+ Stmt      = Writeln .
+ Writeln   = 'writeln' '(' [(string|Expr)
+               {',' (string|Expr) }] ')' .
+ Expr      = Term { ('+' | '-') Term } .
+ Term      = Factor { ('*' | '/') Factor } .
+ Factor    = number
+           | ('+' | '-') Factor
+           | '(' Expr ')'
+           .
+</pre>
+<p>
+We would like to add variables to our language.  But in order to
+keep things as simple as possible, first we'll add constants,
+which can be considered as a subset of variables. These are
+similar to variables, but they are always assigned an initial
+value, and that value can not be changed.  Constants are more
+easily added than variables (since we do not have to worry about
+subsequent assignments), so that is what we'll add this time.
+<p>
+Grammar Changes:
+<p>
+A constant statement looks like:
+<p>
+<pre>
+ const a = 1, b = 7, x = 243;
+</pre>
+<p>
+One way of specifying this in EBNF notation:
+<p>
+<pre>
+ Decl      = 'const' Const {',' Const } ';' .
+ Const     = ident '=' number .
+</pre>
+<p>
+This says that the symbol 'const', is followed by an identifier,
+followed by '=', followed by a number.  This number can be
+followed by a ',', to denote more constants.  Finally, the
+constant declaration is ended by a ';'.
+<p>
+Here is our Teeny .04 grammar, with Constant declarations added,
+and constants (in the form of an ident) added to Factor:
+<p>
+<pre>
+ Teeny     = 'program' ident ';' {Decl} CmpndStmt '.' .
+ Decl      = 'const' Const {',' Const } ';' .
+ Const     = ident '=' number .
+ CmpndStmt = 'begin' [Stmt {';' Stmt }] 'end' .
+ Stmt      = Writeln .
+ Writeln   = 'writeln' '(' [(string|Expr)
+               {',' (string|Expr) }] ')' .
+ Expr      = Term { ('+' | '-') Term } .
+ Term      = Factor { ('*' | '/') Factor } .
+ Factor    = number
+           | ident
+           | ('+' | '-') Factor
+           | '(' Expr ')'
+           .
+</pre>
+<p>
+<p>
+Notice that we've added the non-terminal Decl to the Teeny
+production, and in such a way as to allow zero or more Constant
+declarations.  We have also added a production for Decl, and a
+production for Const. Finally, we have added ident to the Factor
+production, to allow for the use of Constants.  Additionally, we
+had to add the symbols '=' and 'const' to our Scanner.
+<p>
+Code to parse a Decl might look like:
+<p>
+<p>
+<pre>
+ def decl
+   while sym == 'const'
+     <code class='funcname'>getsym()</code>
+     <code class='funcname'>const()</code>
+     while sym == ','
+       <code class='funcname'>getsym()</code>
+       <code class='funcname'>const()</code>
+     end
+     expect(';')
+   end
+ end
+</pre>
+<p>
+<pre>
+ def const
+   expect(ident)
+   expect('=')
+   expect(number)
+ end
+</pre>
+<p>
+<p>
+A Teeny .04 sample program using Constants:
+<p>
+<pre>
+  program four;
+  const x = 3, y = 2;
+  begin
+    writeln('hello, world!');
+    writeln('2 + 3 * 4 = ', 2 + 3 * 4);
+    writeln('x is ', x, ' and y is ', y);
+    writeln('x * y is ', x * y);
+  end.
+</pre>
+<p>
+Enter the Symbol Table:
+<p>
+As you might guess, the changes to the scanner and the parser are
+rather simple.  But, when we are parsing a Factor, or generating
+code, how do we remember that a certain identifier is a Constant?
+That is where the symbol table comes into play.
+<p>
+A symbol table is an abstract data type that is used to hold
+names of variables, constants, and functions.  Along with the
+name, attributes such as data type, data address, data size,
+initial value, and scope are stored.  Identifiers are added to
+the symbol table when they are initially declared.  Later, when
+an identifier is referenced, the symbol table is consulted to
+make sure the identifier is known and properly used.  As you
+might surmise, languages where identifiers can be used before
+they are declared pose problems for compiler writers, and
+essentially require the use of an AST.
+<p>
+In Teeny .04, whenever a constant is recognized, the constant
+identifier - and the constants value - is added to the symbol
+table.  In our Toy compiler, we'll use an array of structures for
+the symbol table, and treat it as a simple stack. Production
+compilers typically use a hash table, while some prefer trees or
+tries.
+<p>
+Implementation:
+<p>
+Our symbol table will have the following fields:
+<p>
+<ul><li>id - the name of the constant identifier.
+<li>val - the value of the constant.
+</ul>
+<p>
+Here is our simple symbol table class:
+<p>
+<p>
+<pre>
+ class Sym_table {
+ public:
+   <code class='funcname'>Sym_table()</code> {tx = 0;}
+   void enter_const(const char id[], int val);
+   int  position(const char id[]);
+   int  getval(int i) {return table[i].val;}
+ private:
+   enum {Table_max=100};
+   struct Table {
+     Ident id;             // ident name
+     int val;              // value
+   };
+</pre>
+<p>
+<pre>
+   int tx;                 // index
+   Table table[Table_max]; // entry 0 used as sentinel
+ };
+</pre>
+<p>
+<p>
+When a constant declaration is recognized, the constant name and
+value are added to the symbol table.  Here is the code for
+recognizing a constant and adding it to the symbol table:
+<p>
+<p>
+<pre>
+ //Decl  = 'const' Const {',' Const } ';' .
+ //Const = ident '=' number .
+ void Parser::<code class='funcname'>decl()</code> {
+   while (accept(constsym)) {
+     do {
+       expect(idsym);
+       expect(eqlsym);
+       expect(numbersym);
+       if (position(<code class='funcname'>getid()</code>))
+         error.warn("already defined");
+       else
+         enter_const(<code class='funcname'>getid()</code>, Scanner::<code class='funcname'>getval()</code>);
+     } while (accept(comma));
+     expect(semi);
+   }
+ }
+</pre>
+<p>
+<p>
+When a constant is found via the factor production, the name is
+looked up in the symbol table, and the value for the name is
+found.  Code is then generated to push that value onto the stack.
+It is an error if the constant name is not found in the symbol
+table.  Here is the new code for factor:
+<p>
+<p>
+<pre>
+  if (sym == idsym) {
+    int i = position(<code class='funcname'>getid()</code>);
+    if (i == 0)
+      error.warn("undefined identifier");
+    else
+      gen.load_number(Sym_table::getval(i));
+    <code class='funcname'>getsym()</code>;
+  }
+</pre>
+<p>
+<p>
+Summary of changes to the compiler:
+<p>
+<ul><li>Put the Virtual Machine interpreter into its own class
+<li>Added a couple of symbols, '=' and 'const'
+<li>Added a symbol table class
+<li>Changed <code class='funcname'>factor()</code> and <code class='funcname'>parse()</code> per the grammar
+<li>Added new method <code class='funcname'>decl()</code>, per the grammar
+</ul>
+<p>
+<a name='summary:'></a>
+<h2 class='level2'>Summary:</h2>
+<p>
+We reviewed the different parts of a compiler, specifically
+Scanning, Parsing, Semantic analysis and Code generation.  We
+reviewed grammars and their importance.  We reviewed how to
+derive parsing code from a grammar.  We introduced the Symbol
+Table. We added constants to our language, which gives a simple
+example of the use of a symbol table.  We showed some of the
+major changes to Teeny.
+<p>
 
+  
+ <hr>
+ <p>
+ <a href="Compiler.html"> Table of Contents </a>
+ <p>
+ Prev <a href="03-Grammar.html"> Part 3: More about grammars </a>
+ <p>
+ Next <a href="05-Variables.html"> Part 5: Variables </a>
+ <p>
+ Code Repository <a href="https://github.com/borismix/SimpleCompiler"> A Simple Compiler </a>
+ 
+  <hr>
+Copyright © 2022 SemWare Corporation. All rights reserved worldwide.
+ 
+  </body></html>
